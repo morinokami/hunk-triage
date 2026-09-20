@@ -1,0 +1,121 @@
+import type { Changeset, DiffFile, Group, Verdict } from "./types.ts";
+
+import { ROLE_CRITERIA } from "./questions.ts";
+import { GROUPS } from "./types.ts";
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const inRange = (value: unknown, max: number): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max;
+
+export function isVerdict(value: unknown): value is Verdict {
+  return (
+    isRecord(value) &&
+    typeof value.role === "string" &&
+    Object.hasOwn(ROLE_CRITERIA, value.role) &&
+    inRange(value.mechanical, 1) &&
+    inRange(value.core, 1) &&
+    inRange(value.attention, 3)
+  );
+}
+
+export function eligible(file: DiffFile): boolean {
+  return !file.isBinary && !file.isTooLarge && file.patch.length > 0;
+}
+
+export function groupFor(verdict: Verdict | undefined, threshold: number): Group {
+  if (!verdict) return "unclassified";
+  if (verdict.role === "generated") return "generated";
+  if (verdict.mechanical >= 0.5) return "mechanical";
+
+  switch (verdict.role) {
+    case "test":
+      return "tests";
+    case "fixture":
+      return "fixtures";
+    case "docs":
+      return "docs";
+    case "config":
+      return "config";
+    default:
+      return verdict.core >= threshold ? "core" : "supporting";
+  }
+}
+
+export function countsLabel(groups: ReadonlyMap<string, Group>): string {
+  const counts = new Map<Group, number>();
+
+  for (const group of groups.values()) {
+    counts.set(group, (counts.get(group) ?? 0) + 1);
+  }
+
+  return GROUPS.filter((group) => counts.has(group))
+    .map((group) => `${group} ${counts.get(group)}`)
+    .join(" · ");
+}
+
+interface Row {
+  file: DiffFile;
+  index: number;
+  verdict: Verdict | undefined;
+  group: Group;
+}
+
+/** Groups lead; inside a group the dominant score wins, and ties keep the original order. */
+function byReviewOrder(a: Row, b: Row): number {
+  const byGroup = GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group);
+  if (byGroup) return byGroup;
+
+  // Source files lead with how central they are; every other group leads with attention.
+  const centralFirst = a.group === "core" || a.group === "supporting";
+  const first = centralFirst ? "core" : "attention";
+  const second = centralFirst ? "attention" : "core";
+
+  return (
+    (b.verdict?.[first] ?? 0) - (a.verdict?.[first] ?? 0) ||
+    (b.verdict?.[second] ?? 0) - (a.verdict?.[second] ?? 0) ||
+    a.index - b.index
+  );
+}
+
+function scoreLabel(verdict: Verdict | undefined, group: Group): string {
+  if (!verdict) return "unclassified · not classified";
+
+  const core = verdict.core.toFixed(2);
+  const attention = verdict.attention.toFixed(1);
+  const mechanical = verdict.mechanical.toFixed(2);
+
+  return `${group} · core ${core} · attention ${attention}/3 · mechanical ${mechanical}`;
+}
+
+export function applyVerdicts(
+  changeset: Changeset,
+  verdicts: ReadonlyMap<string, Verdict>,
+  threshold: number,
+) {
+  const rows: Row[] = changeset.files.map((file, index) => {
+    const verdict = verdicts.get(file.id);
+    return { file, index, verdict, group: groupFor(verdict, threshold) };
+  });
+  rows.sort(byReviewOrder);
+
+  const groups = new Map(rows.map((row) => [row.file.id, row.group]));
+
+  // The scores go in beside hunk's own notes; existing annotations are carried over.
+  const files = rows.map(({ file, verdict, group }) => ({
+    ...file,
+    agent: {
+      ...file.agent,
+      path: file.path,
+      summary: [scoreLabel(verdict, group), file.agent?.summary].filter(Boolean).join("\n"),
+      annotations: file.agent?.annotations ?? [],
+    },
+  }));
+
+  const heading = `Review order by hunk-triage: ${countsLabel(groups)}`;
+  const agentSummary = [heading, changeset.agentSummary].filter(Boolean).join("\n");
+
+  return { groups, changeset: { ...changeset, agentSummary, files } };
+}

@@ -1,0 +1,164 @@
+import { writeFile } from "node:fs/promises";
+
+import type { Cache } from "./cache.ts";
+import type { Config } from "./config.ts";
+import type { Environment } from "./context.ts";
+import type { Fetch } from "./jev.ts";
+import type { Changeset, TriageResult, Verdict } from "./types.ts";
+
+import { cacheDirectory, cacheKey, diskCache, noCache } from "./cache.ts";
+import { applyVerdicts, countsLabel, eligible } from "./classify.ts";
+import { resolveContext } from "./context.ts";
+import { queryFiles } from "./jev.ts";
+
+interface TriageOptions {
+  env?: Environment;
+  cache?: Cache;
+  fetch?: Fetch;
+}
+
+export async function triage(
+  changeset: Changeset,
+  cwd: string,
+  config: Config,
+  options: TriageOptions = {},
+): Promise<TriageResult> {
+  const started = performance.now();
+  const env = options.env ?? process.env;
+
+  const result: TriageResult = {
+    changeset,
+    state: { mode: "unavailable", groups: new Map() },
+    context: null,
+    verdicts: new Map(),
+    asked: 0,
+    cached: 0,
+    failed: 0,
+    elapsedMs: 0,
+  };
+
+  try {
+    if (!changeset.files.length) {
+      result.state = { mode: "empty", groups: new Map() };
+      return result;
+    }
+
+    const apiKey = env.TYPESAFE_API_KEY?.trim();
+    if (!apiKey) {
+      result.reason = "TYPESAFE_API_KEY is not set";
+      return result;
+    }
+
+    result.context = resolveContext(changeset.title, cwd, env);
+
+    const targets = changeset.files.filter(eligible);
+    if (!targets.length) {
+      result.state = { mode: "no-targets", groups: new Map() };
+      return result;
+    }
+
+    // Cached verdicts come first; only the files without one reach Jev.
+    const directory = cacheDirectory(env);
+    const cache = options.cache ?? (directory ? diskCache(directory) : noCache());
+    const paths = changeset.files.map((file) => file.path);
+
+    const entries = await Promise.all(
+      targets.map(async (file) => {
+        const key = cacheKey(config.model, result.context, paths, file);
+        return { file, key, verdict: await cache.read(key).catch(() => undefined) };
+      }),
+    );
+
+    const verdicts = new Map<string, Verdict>();
+    for (const { file, verdict } of entries) {
+      if (verdict) verdicts.set(file.id, verdict);
+    }
+    result.cached = verdicts.size;
+
+    const misses = entries.filter((entry) => !entry.verdict);
+    result.asked = misses.length;
+
+    const queried = await queryFiles({
+      model: config.model,
+      context: result.context,
+      allFiles: changeset.files,
+      pending: misses.map((entry) => entry.file),
+      apiKey,
+      timeoutMs: config.timeoutMs,
+      fetch: options.fetch,
+    });
+
+    result.failed = queried.failed;
+    for (const [id, verdict] of queried.verdicts) {
+      verdicts.set(id, verdict);
+    }
+    result.verdicts = verdicts;
+
+    await Promise.all(
+      misses.map(async ({ file, key }) => {
+        const verdict = queried.verdicts.get(file.id);
+        if (verdict) await cache.write(key, verdict).catch(() => {});
+      }),
+    );
+
+    if (!verdicts.size) {
+      result.reason = "Jev returned no valid classifications";
+      return result;
+    }
+
+    const applied = applyVerdicts(changeset, verdicts, config.coreThreshold);
+    result.changeset = applied.changeset;
+    result.state = { mode: "classified", groups: applied.groups };
+
+    return result;
+  } catch {
+    // Do not expose transport errors, request data or secrets in the UI.
+    result.reason = "Classification failed";
+    result.state = { mode: "unavailable", groups: new Map() };
+    result.changeset = changeset;
+
+    return result;
+  } finally {
+    result.elapsedMs = Math.round(performance.now() - started);
+
+    if (env.HUNK_TRIAGE_DEBUG) {
+      await writeDebug(env.HUNK_TRIAGE_DEBUG, changeset, result);
+    }
+  }
+}
+
+/** Diagnostics for one run. Never contains the API key or raw patches. */
+async function writeDebug(path: string, changeset: Changeset, result: TriageResult) {
+  const debug = {
+    title: changeset.title,
+    context: result.context,
+    mode: result.state.mode,
+    elapsed_ms: result.elapsedMs,
+    asked: result.asked,
+    cached: result.cached,
+    failed: result.failed,
+    ...(result.reason ? { reason: result.reason } : {}),
+    files: result.changeset.files.map((file) => ({
+      path: file.path,
+      group: result.state.groups.get(file.id) ?? "unclassified",
+      verdict: result.verdicts.get(file.id) ?? null,
+    })),
+  };
+
+  await writeFile(path, JSON.stringify(debug, null, 2), { mode: 0o600 }).catch(() => {});
+}
+
+export function notification(result: TriageResult): string | null {
+  const { mode } = result.state;
+
+  if (mode === "empty" || mode === "no-targets") return null;
+
+  if (mode === "unavailable") {
+    return `hunk-triage: ${result.reason ?? "Jev unavailable"}; original order`;
+  }
+
+  const counts = countsLabel(result.state.groups);
+  const failed = result.failed ? `, ${result.failed} failed` : "";
+
+  return `hunk-triage: ${counts} (${result.elapsedMs} ms, ${result.asked} asked, ${result.cached} cached${failed})`;
+}

@@ -1,0 +1,7 @@
+[install]
+# Dependencies stay pinned: save exact versions instead of ^ ranges.
+exact = true
+
+# Only host-provided packages may be imported; isolated linking makes an
+# accidental import of an undeclared transitive dependency fail to resolve.
+linker = "isolated"

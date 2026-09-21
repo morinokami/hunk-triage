@@ -24,7 +24,7 @@ A [hunk](https://www.hunk.dev/) extension that orders changed files for review w
 
 ## Testing
 
-- Tests use `bun:test` and inject `fetch`, `cache` and `env` through the options of `triage()` and `queryFiles()`; builders live in `test/helpers.ts`. Never call the real API, read the real environment or touch the real cache directory, and prefer this injection over module mocks.
+- Tests use `bun:test` and inject `fetch`, `cache`, `env` and `run` (the runner of external commands such as Git) through the options of `triage()`, `queryFiles()` and `resolveContext()`; builders live in `test/helpers.ts`. Never call the real API, read the real environment or touch the real cache directory, and prefer this injection over module mocks.
 - CI runs on Linux, macOS and Windows. Keep code and tests platform-neutral: `node:path` and `os.tmpdir()`, no hard-coded POSIX paths or shell commands.
 
 ## Releasing

@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import type { Cache } from "./cache.ts";
 import type { Config } from "./config.ts";
 import type { Fetch } from "./jev.ts";
+import type { Run } from "./run.ts";
 import type { Changeset, Environment, TriageResult, Verdict } from "./types.ts";
 
 import { cacheKey, defaultCache } from "./cache.ts";
@@ -14,6 +15,7 @@ interface TriageOptions {
   env?: Environment;
   cache?: Cache;
   fetch?: Fetch;
+  run?: Run;
 }
 
 export async function triage(
@@ -48,7 +50,7 @@ export async function triage(
       return result;
     }
 
-    result.context = resolveContext(changeset.title, cwd, env);
+    result.context = await resolveContext(changeset.title, cwd, env, { run: options.run });
 
     const targets = changeset.files.filter(eligible);
     if (!targets.length) {

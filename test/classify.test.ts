@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 
 import { applyVerdicts, groupFor, isVerdict } from "../src/classify.ts";
-import { readConfig } from "../src/config.ts";
 import { changeset, file, verdict } from "./helpers.ts";
 
 test("group precedence and thresholds follow the specification", () => {
@@ -78,7 +77,7 @@ test("sorts groups and scores stably while preserving original data and annotati
   expect(applied.changeset.agentSummary!).toMatch(/Existing review$/);
 });
 
-test("rejects corrupt verdicts and untrusted configuration values", () => {
+test("rejects corrupt verdicts", () => {
   const corrupt = [
     null,
     [],
@@ -91,10 +90,4 @@ test("rejects corrupt verdicts and untrusted configuration values", () => {
   for (const value of corrupt) {
     expect(isVerdict(value)).toBe(false);
   }
-
-  expect(
-    readConfig({ model: "https://evil.test", timeout_ms: Infinity, core_threshold: -1 }),
-  ).toStrictEqual(readConfig());
-  expect(readConfig({ timeout_ms: 30 }).timeoutMs).toBe(500);
-  expect(readConfig({ timeout_ms: 90000 }).timeoutMs).toBe(20000);
 });

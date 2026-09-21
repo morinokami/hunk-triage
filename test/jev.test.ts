@@ -36,7 +36,9 @@ test("request contract includes all paths, truncates patches and uses indexed qu
     "core_0",
     "attention_0",
   ]);
+});
 
+test("a response without the expected answers is rejected", () => {
   expect(() => parseAnswers({ answers: {} }, 1)).toThrow();
 });
 
@@ -71,7 +73,7 @@ test("batching uses one file through 40, then batches of eight; concurrency stay
   }
 });
 
-test("retries only overload statuses and uses at most three retries", async () => {
+test("retries overload statuses, using up to three retries", async () => {
   let calls = 0;
 
   const result = await queryFiles({
@@ -86,24 +88,26 @@ test("retries only overload statuses and uses at most three retries", async () =
 
   expect(calls).toBe(4);
   expect(result.failed).toBe(0);
+});
 
+test("does not retry other error statuses", async () => {
   for (const status of [401, 422, 500]) {
-    let failedCalls = 0;
+    let calls = 0;
 
-    const failed = await queryFiles({
+    const result = await queryFiles({
       ...options(),
       fetch: async () => {
-        failedCalls++;
+        calls++;
         return new Response("", { status });
       },
     });
 
-    expect(failedCalls).toBe(1);
-    expect(failed.failed).toBe(1);
+    expect(calls).toBe(1);
+    expect(result.failed).toBe(1);
   }
 });
 
-test("one global deadline bounds active requests, queued work and backoff; completed results survive", async () => {
+test("one global deadline bounds active requests and queued work; completed results survive", async () => {
   let calls = 0;
   const start = performance.now();
 
@@ -123,14 +127,16 @@ test("one global deadline bounds active requests, queued work and backoff; compl
   expect(result.verdicts.size).toBe(1);
   expect(result.failed).toBe(19);
   expect(calls).toBeLessThanOrEqual(13);
+});
 
-  const backoff = await queryFiles({
+test("the deadline also bounds backoff", async () => {
+  const result = await queryFiles({
     ...options(),
     timeoutMs: 20,
     fetch: async () => new Response("", { status: 429 }),
   });
 
-  expect(backoff.failed).toBe(1);
+  expect(result.failed).toBe(1);
 });
 
 test("malformed member invalidates its entire batch", async () => {

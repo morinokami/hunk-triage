@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { Cache } from "../src/cache.ts";
 import type { Changeset, DiffFile, Verdict } from "../src/types.ts";
 
@@ -40,6 +44,17 @@ export function memoryCache(): Cache & { entries: Map<string, Verdict> } {
       entries.set(key, value);
     },
   };
+}
+
+/** Runs `body` with a fresh temporary directory and removes it afterwards. */
+export async function withTempDir<T>(body: (dir: string) => T | Promise<T>): Promise<T> {
+  const dir = await mkdtemp(join(tmpdir(), "hunk-triage-test-"));
+
+  try {
+    return await body(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 /** One Jev response carrying the given verdicts, in the shape the parser expects. */

@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Context, DiffFile, Verdict } from "./types.ts";
 
 import { PATCH_LIMIT } from "./cache.ts";
-import { isRecord, isVerdict } from "./classify.ts";
+import { isRecord, isVerdict } from "./guards.ts";
 import { questions } from "./questions.ts";
 
 export const ENDPOINT = "https://api.typesafe.ai/v1/systemone";

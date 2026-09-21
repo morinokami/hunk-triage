@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { applyVerdicts, groupFor, isVerdict } from "../src/classify.ts";
+import { applyVerdicts, groupFor } from "../src/classify.ts";
 import { changeset, file, verdict } from "./helpers.ts";
 
 test("group precedence and thresholds follow the specification", () => {
@@ -75,19 +75,4 @@ test("sorts groups and scores stably while preserving original data and annotati
   );
   expect(applied.changeset.files[0]!.agent!.summary!).toMatch(/Existing note$/);
   expect(applied.changeset.agentSummary!).toMatch(/Existing review$/);
-});
-
-test("rejects corrupt verdicts", () => {
-  const corrupt = [
-    null,
-    [],
-    verdict({ attention: NaN }),
-    verdict({ core: 2 }),
-    { ...verdict(), role: "constructor" },
-    { ...verdict(), mechanical: "0.5" },
-  ];
-
-  for (const value of corrupt) {
-    expect(isVerdict(value)).toBe(false);
-  }
 });

@@ -1,25 +1,6 @@
 import type { Changeset, DiffFile, Group, Verdict } from "./types.ts";
 
-import { ROLE_CRITERIA } from "./questions.ts";
 import { GROUPS } from "./types.ts";
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-const inRange = (value: unknown, max: number): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max;
-
-export function isVerdict(value: unknown): value is Verdict {
-  return (
-    isRecord(value) &&
-    typeof value.role === "string" &&
-    Object.hasOwn(ROLE_CRITERIA, value.role) &&
-    inRange(value.mechanical, 1) &&
-    inRange(value.core, 1) &&
-    inRange(value.attention, 3)
-  );
-}
 
 export function eligible(file: DiffFile): boolean {
   return !file.isBinary && !file.isTooLarge && file.patch.length > 0;

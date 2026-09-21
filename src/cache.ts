@@ -6,7 +6,7 @@ import { isAbsolute, join } from "node:path";
 import type { Environment } from "./context.ts";
 import type { Context, DiffFile, Verdict } from "./types.ts";
 
-import { isVerdict } from "./classify.ts";
+import { isVerdict } from "./guards.ts";
 import { QUESTIONS_VERSION } from "./questions.ts";
 
 export const PATCH_LIMIT = 16_000;

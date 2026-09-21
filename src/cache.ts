@@ -3,8 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
-import type { Environment } from "./context.ts";
-import type { Context, DiffFile, Verdict } from "./types.ts";
+import type { Context, DiffFile, Environment, Verdict } from "./types.ts";
 
 import { isVerdict } from "./guards.ts";
 import { sentPatch } from "./jev.ts";
@@ -52,7 +51,7 @@ export function cacheDirectory(env: Environment): string | undefined {
 }
 
 /** A review has to work without a cache, so an unresolvable directory degrades to this. */
-export function noCache(): Cache {
+function noCache(): Cache {
   return {
     async read() {
       return undefined;
@@ -92,4 +91,11 @@ export function diskCache(directory: string): Cache {
       }
     },
   };
+}
+
+/** The cache of a review that was not handed another one. */
+export function defaultCache(env: Environment): Cache {
+  const directory = cacheDirectory(env);
+
+  return directory ? diskCache(directory) : noCache();
 }

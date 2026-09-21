@@ -2,11 +2,10 @@ import { writeFile } from "node:fs/promises";
 
 import type { Cache } from "./cache.ts";
 import type { Config } from "./config.ts";
-import type { Environment } from "./context.ts";
 import type { Fetch } from "./jev.ts";
-import type { Changeset, TriageResult, Verdict } from "./types.ts";
+import type { Changeset, Environment, TriageResult, Verdict } from "./types.ts";
 
-import { cacheDirectory, cacheKey, diskCache, noCache } from "./cache.ts";
+import { cacheKey, defaultCache } from "./cache.ts";
 import { applyVerdicts, countsLabel, eligible } from "./classify.ts";
 import { resolveContext } from "./context.ts";
 import { queryFiles } from "./jev.ts";
@@ -58,8 +57,7 @@ export async function triage(
     }
 
     // Cached verdicts come first; only the files without one reach Jev.
-    const directory = cacheDirectory(env);
-    const cache = options.cache ?? (directory ? diskCache(directory) : noCache());
+    const cache = options.cache ?? defaultCache(env);
     const paths = changeset.files.map((file) => file.path);
 
     const entries = await Promise.all(

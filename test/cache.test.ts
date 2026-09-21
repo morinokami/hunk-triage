@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { cacheDirectory, cacheKey, diskCache } from "../src/cache.ts";
+import { cacheDirectory, cacheKey, defaultCache, diskCache } from "../src/cache.ts";
 import { readConfig } from "../src/config.ts";
 import { file, verdict, withTempDir } from "./helpers.ts";
 
@@ -51,3 +51,14 @@ test("cache directory follows hunk's home resolution and ignores relative settin
   );
   expect(cacheDirectory({ HOME: "cache" })).toBe(undefined);
 });
+
+test("the default cache sits in the resolved directory; without one nothing is stored", () =>
+  withTempDir(async (dir) => {
+    const cache = defaultCache({ XDG_CACHE_HOME: dir });
+    await cache.write("entry", verdict());
+    expect(await readdir(join(dir, "hunk-triage"))).toStrictEqual(["entry.json"]);
+
+    const disabled = defaultCache({ HOME: "relative" });
+    await disabled.write("entry", verdict());
+    expect(await disabled.read("entry")).toBe(undefined);
+  }));

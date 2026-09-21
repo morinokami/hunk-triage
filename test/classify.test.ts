@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 
-import { applyVerdicts, groupFor } from "../src/classify.ts";
+import type { Group } from "../src/types.ts";
+
+import { applyVerdicts, countsLabel, groupFor, groupOf } from "../src/classify.ts";
 import { changeset, file, verdict } from "./helpers.ts";
 
 test("group precedence and thresholds follow the specification", () => {
@@ -75,4 +77,20 @@ test("sorts groups and scores stably while preserving original data and annotati
   );
   expect(applied.changeset.files[0]!.agent!.summary!).toMatch(/Existing note$/);
   expect(applied.changeset.agentSummary!).toMatch(/Existing review$/);
+});
+
+test("counts follow the review order and leave out empty groups", () => {
+  const groups = new Map<string, Group>([
+    ["a", "unclassified"],
+    ["b", "core"],
+    ["c", "tests"],
+    ["d", "core"],
+  ]);
+
+  expect(countsLabel(groups)).toBe("core 2 · tests 1 · unclassified 1");
+});
+
+test("a file without a group is unclassified", () => {
+  expect(groupOf(new Map([["a", "core"]]), "a")).toBe("core");
+  expect(groupOf(new Map(), "a")).toBe("unclassified");
 });

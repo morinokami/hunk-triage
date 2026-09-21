@@ -25,12 +25,23 @@ export function groupFor(verdict: Verdict | undefined, threshold: number): Group
   }
 }
 
-export function countsLabel(groups: ReadonlyMap<string, Group>): string {
+/** A file without an entry is unclassified, as every file is while a review has no groups. */
+export function groupOf(groups: ReadonlyMap<string, Group>, fileId: string): Group {
+  return groups.get(fileId) ?? "unclassified";
+}
+
+export function countGroups(groups: Iterable<Group>): Map<Group, number> {
   const counts = new Map<Group, number>();
 
-  for (const group of groups.values()) {
+  for (const group of groups) {
     counts.set(group, (counts.get(group) ?? 0) + 1);
   }
+
+  return counts;
+}
+
+export function countsLabel(groups: ReadonlyMap<string, Group>): string {
+  const counts = countGroups(groups.values());
 
   return GROUPS.filter((group) => counts.has(group))
     .map((group) => `${group} ${counts.get(group)}`)

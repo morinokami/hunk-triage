@@ -6,7 +6,15 @@ import { join } from "node:path";
 import { diskCache } from "../src/cache.ts";
 import { readConfig } from "../src/config.ts";
 import { triage } from "../src/triage.ts";
-import { answer, changeset, file, memoryCache, verdict, withTempDir } from "./helpers.ts";
+import {
+  answer,
+  changeset,
+  file,
+  memoryCache,
+  requested,
+  verdict,
+  withTempDir,
+} from "./helpers.ts";
 
 const env = { TYPESAFE_API_KEY: "test-only" };
 const config = readConfig();
@@ -21,13 +29,10 @@ test("partial failure puts failed and skipped files last", async () => {
   const result = await triage(input, cwd, config, {
     env,
     cache: memoryCache(),
-    fetch: async (_, init) => {
-      const body = JSON.parse(init.body as string);
-
-      return body.state.file.path === "ok"
+    fetch: async (_, init) =>
+      requested(init).files[0]!.path === "ok"
         ? answer([verdict()])
-        : new Response("", { status: 401 });
-    },
+        : new Response("", { status: 401 }),
   });
 
   expect(result.changeset.files.map((f) => f.path)).toStrictEqual(["ok", "fail", "binary"]);

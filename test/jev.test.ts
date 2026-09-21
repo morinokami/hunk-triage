@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { ENDPOINT, parseAnswers, queryFiles, requestBody } from "../src/jev.ts";
-import { answer, file, verdict } from "./helpers.ts";
+import { answer, file, requested, verdict } from "./helpers.ts";
 
 const options = (count = 1) => {
   const files = Array.from({ length: count }, (_, i) => file(`${i}.ts`));
@@ -54,16 +54,15 @@ test("batching uses one file through 40, then batches of eight; concurrency stay
         expect(url).toBe(ENDPOINT);
         expect(init.redirect).toBe("error");
 
-        const body = JSON.parse(init.body as string);
-        const size = Object.keys(body.questions).length / 4;
-        sizes.push(size);
-        if (size > 1) expect(body.questions.core_0.instructions).toMatch(/files\[0\]/);
+        const { body, files } = requested(init);
+        sizes.push(files.length);
+        if (files.length > 1) expect(body.questions.core_0.instructions).toMatch(/files\[0\]/);
 
         peak = Math.max(peak, ++active);
         await delay(2);
         active--;
 
-        return answer(Array.from({ length: size }, () => verdict()));
+        return answer(files.map(() => verdict()));
       },
     });
 
@@ -143,14 +142,13 @@ test("malformed member invalidates its entire batch", async () => {
   const result = await queryFiles({
     ...options(41),
     fetch: async (_, init) => {
-      const body = JSON.parse(init.body as string);
-      const count = Object.keys(body.questions).length / 4;
-      const response = (await answer(Array.from({ length: count }, () => verdict())).json()) as {
+      const { files } = requested(init);
+      const response = (await answer(files.map(() => verdict())).json()) as {
         answers: { attention_7: { score: number } };
       };
 
       // Corrupt one answer of the batch that starts at the first file.
-      if (body.state.files?.[0].path === "0.ts") response.answers.attention_7.score = 4;
+      if (files[0]!.path === "0.ts") response.answers.attention_7.score = 4;
 
       return Response.json(response);
     },

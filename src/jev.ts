@@ -102,12 +102,13 @@ function discard(response: Response): void {
   void response.body?.cancel().catch(() => {});
 }
 
-async function ask(
-  body: ReturnType<typeof requestBody>,
+/** Posts one request, waiting out an overloaded Jev, and returns the decoded response. */
+async function post(
+  body: unknown,
   apiKey: string,
   signal: AbortSignal,
   transport: Fetch,
-): Promise<Verdict[]> {
+): Promise<unknown> {
   for (let attempt = 0; ; attempt++) {
     signal.throwIfAborted();
 
@@ -132,9 +133,7 @@ async function ask(
       throw new Error(`Jev HTTP ${response.status}`);
     }
 
-    const payload = await abortable(response.json(), signal);
-
-    return parseAnswers(payload, Object.keys(body.questions).length / 4);
+    return abortable(response.json(), signal);
   }
 }
 
@@ -160,6 +159,7 @@ export async function queryFiles(options: {
   if (!pending.length) return { verdicts, failed: 0 };
 
   const batches = batchFiles(pending);
+  const transport = options.fetch ?? globalThis.fetch;
   const controller = new AbortController();
 
   // Twelve concurrent requests and cancellation races share this signal.
@@ -175,8 +175,8 @@ export async function queryFiles(options: {
 
       try {
         const body = requestBody(options.model, options.context, options.allFiles, batch);
-        const transport = options.fetch ?? globalThis.fetch;
-        const values = await ask(body, options.apiKey, controller.signal, transport);
+        const payload = await post(body, options.apiKey, controller.signal, transport);
+        const values = parseAnswers(payload, batch.length);
         if (controller.signal.aborted) return;
 
         batch.forEach((file, i) => verdicts.set(file.id, values[i]!));

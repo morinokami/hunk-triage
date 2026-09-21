@@ -53,7 +53,7 @@ Disable all user extensions for one launch with `hunk diff --no-extensions`. Rem
 - Binary files, oversized files, empty patches and failed classifications remain unclassified, at the end. If no files have a valid classification, the original order is retained with one status heading.
 - Existing diffs and annotations are preserved. No classification cards are added beside the diff.
 - The pane retains filtering, file selection, mouse navigation and `s` to toggle the files pane (subject to hunk's keybindings). hunk may hide the pane at narrower terminal widths; use `--sidebar` to show it explicitly.
-- `hunk show` can use the commit message. Working-tree and staged reviews can use a feature branch name, except on shared branches like `main`. Supply a PR description yourself with `HUNK_TRIAGE_TITLE` / `HUNK_TRIAGE_DESCRIPTION`.
+- `hunk show` can use the commit message. Working-tree and staged reviews can use a feature branch name, except on shared branches like `main`. Supply a PR description yourself with `HUNK_TRIAGE_TITLE` / `HUNK_TRIAGE_DESCRIPTION`. Whatever the source, the title is limited to 256 characters and the description to 1,500, with HTML comments removed.
 
 ## Configuration
 
@@ -77,7 +77,7 @@ Repository `.hunk/config.toml` can override these settings.
 | Environment variable      | Purpose                                                                                   |
 | ------------------------- | ----------------------------------------------------------------------------------------- |
 | `TYPESAFE_API_KEY`        | API authentication; required to classify, including when cached results exist.            |
-| `HUNK_TRIAGE_TITLE`       | Optional explicit context, taking precedence over Git context.                            |
+| `HUNK_TRIAGE_TITLE`       | Optional explicit context, taking precedence over Git context; limited to 256 characters. |
 | `HUNK_TRIAGE_DESCRIPTION` | Optional accompanying description; HTML comments removed and limited to 1,500 characters. |
 | `HUNK_TRIAGE_DEBUG`       | Optional path to a JSON diagnostics file (e.g. `/tmp/triage.json`), rewritten each run.   |
 | `XDG_CACHE_HOME`          | Cache root; absolute paths only. Defaults to `~/.cache` on every platform.                |

@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { diskCache } from "../src/cache.ts";
 import { readConfig } from "../src/config.ts";
-import { triage } from "../src/triage.ts";
+import { notification, triage } from "../src/triage.ts";
 import {
   answer,
   changeset,
@@ -152,3 +152,44 @@ test("debug output names each file's group and never contains the API key", () =
     expect(debug).not.toContain("test-only");
     expect(JSON.parse(debug).files[0].group).toBe("core");
   }));
+
+test("a classified review is announced as info with its counts, failures included", async () => {
+  const result = await triage(changeset(file("fail"), file("ok")), cwd, config, {
+    env,
+    cache: memoryCache(),
+    fetch: async (_, init) =>
+      requested(init).files[0]!.path === "ok"
+        ? answer([verdict()])
+        : new Response("", { status: 401 }),
+  });
+
+  const toast = notification(result)!;
+  expect(toast.type).toBe("info");
+  expect(toast.message).toMatch(
+    /^hunk-triage: core 1 · unclassified 1 \(\d+ ms, 2 asked, 0 cached, 1 failed\)$/,
+  );
+});
+
+test("an unavailable review warns with its reason; nothing to classify stays quiet", async () => {
+  const options = {
+    cache: memoryCache(),
+    fetch: async (): Promise<Response> => {
+      throw new Error("must not call");
+    },
+  };
+
+  const missing = await triage(changeset(file("a")), cwd, config, { ...options, env: {} });
+  expect(notification(missing)).toStrictEqual({
+    message: "hunk-triage: TYPESAFE_API_KEY is not set; original order",
+    type: "warning",
+  });
+
+  const empty = await triage(changeset(), cwd, config, { ...options, env });
+  expect(notification(empty)).toBe(null);
+
+  const skipped = await triage(changeset(file("a", { isBinary: true })), cwd, config, {
+    ...options,
+    env,
+  });
+  expect(notification(skipped)).toBe(null);
+});

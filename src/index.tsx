@@ -22,8 +22,8 @@ export default function (hunk: HunkExtensionAPI) {
     if (current === generation) {
       state = result.state;
 
-      const message = notification(result);
-      if (message) ctx.notify(message, state.mode === "unavailable" ? "warning" : "info");
+      const toast = notification(result);
+      if (toast) ctx.notify(toast.message, toast.type);
     }
 
     return result.changeset;

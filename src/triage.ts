@@ -146,17 +146,26 @@ async function writeDebug(path: string, changeset: Changeset, result: TriageResu
   await writeFile(path, JSON.stringify(debug, null, 2), { mode: 0o600 }).catch(() => {});
 }
 
-export function notification(result: TriageResult): string | null {
+interface Toast {
+  message: string;
+  type: "info" | "warning";
+}
+
+/** What the user is told about a load; a review with nothing to classify stays quiet. */
+export function notification(result: TriageResult): Toast | null {
   const { mode } = result.state;
 
   if (mode === "empty" || mode === "no-targets") return null;
 
   if (mode === "unavailable") {
-    return `hunk-triage: ${result.reason ?? "Jev unavailable"}; original order`;
+    const message = `hunk-triage: ${result.reason ?? "Jev unavailable"}; original order`;
+
+    return { message, type: "warning" };
   }
 
   const counts = countsLabel(result.state.groups);
   const failed = result.failed ? `, ${result.failed} failed` : "";
+  const message = `hunk-triage: ${counts} (${result.elapsedMs} ms, ${result.asked} asked, ${result.cached} cached${failed})`;
 
-  return `hunk-triage: ${counts} (${result.elapsedMs} ms, ${result.asked} asked, ${result.cached} cached${failed})`;
+  return { message, type: "info" };
 }

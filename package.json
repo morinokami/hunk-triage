@@ -11,9 +11,7 @@
   "license": "MIT",
   "files": [
     "src",
-    "README.md",
-    "SPEC.md",
-    "RELEASING.md"
+    "README.md"
   ],
   "type": "module",
   "scripts": {

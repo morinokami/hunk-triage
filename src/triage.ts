@@ -50,7 +50,7 @@ export async function triage(
       return result;
     }
 
-    result.context = await resolveContext(changeset.title, cwd, env, { run: options.run });
+    result.context = await resolveContext(changeset, cwd, env, { run: options.run });
 
     const targets = changeset.files.filter(eligible);
     if (!targets.length) {

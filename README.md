@@ -53,7 +53,22 @@ Disable all user extensions for one launch with `hunk diff --no-extensions`. Rem
 - Binary files, oversized files, empty patches and failed classifications remain unclassified, at the end. If no files have a valid classification, the original order is retained with one status heading.
 - Existing diffs and annotations are preserved. No classification cards are added beside the diff.
 - The pane retains filtering, file selection, mouse navigation and `s` to toggle the files pane (subject to hunk's keybindings). hunk may hide the pane at narrower terminal widths; use `--sidebar` to show it explicitly.
-- `hunk show` can use the commit message. Working-tree and staged reviews can use a feature branch name, except on shared branches like `main`. Supply a PR description yourself with `HUNK_TRIAGE_TITLE` / `HUNK_TRIAGE_DESCRIPTION`. Whatever the source, the title is limited to 256 characters and the description to 1,500, with HTML comments removed.
+
+## Context
+
+Jev is told what the change is for when the extension can find out, and judges from the list of changed files alone when it cannot. The title and description come from the review itself:
+
+- `hunk show` uses the commit message.
+- A review of the checked-out branch's work uses the branch name, except on shared branches like `main`. That covers `hunk diff`, `hunk diff --staged` and ranges that end at the working tree or `HEAD`, such as `hunk diff main` and `hunk diff main...HEAD`.
+- A patch, a stash and a range between two other commits have no context.
+
+`HUNK_TRIAGE_TITLE` takes precedence over all of these, with `HUNK_TRIAGE_DESCRIPTION` to accompany it; a description without a title is ignored. Use them to supply a PR description yourself, or to give context to a review that has none:
+
+```sh
+HUNK_TRIAGE_TITLE='Fix session expiration' hunk patch change.diff
+```
+
+Whatever the source, the title is limited to 256 characters and the description to 1,500, with HTML comments removed. A review without context is classified all the same.
 
 ## Configuration
 
@@ -81,12 +96,6 @@ Repository `.hunk/config.toml` can override these settings.
 | `HUNK_TRIAGE_DESCRIPTION` | Optional accompanying description; HTML comments removed and limited to 1,500 characters. |
 | `HUNK_TRIAGE_DEBUG`       | Optional path to a JSON diagnostics file (e.g. `/tmp/triage.json`), rewritten each run.   |
 | `XDG_CACHE_HOME`          | Cache root; absolute paths only. Defaults to `~/.cache` on every platform.                |
-
-To give a patch context (`hunk patch` has no commit or branch to read from):
-
-```sh
-HUNK_TRIAGE_TITLE='Fix session expiration' hunk patch change.diff
-```
 
 ## Data and cache
 

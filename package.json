@@ -1,18 +1,9 @@
 {
   "name": "hunk-triage",
   "version": "0.1.0",
+  "private": true,
   "description": "Read the important changes first: Jev-powered review ordering for hunk.",
-  "keywords": [
-    "code-review",
-    "diff",
-    "hunk-extension",
-    "jev"
-  ],
   "license": "MIT",
-  "files": [
-    "src",
-    "README.md"
-  ],
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",

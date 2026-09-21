@@ -12,6 +12,9 @@ export interface Verdict {
   attention: number;
 }
 
+/** The process environment, or the stand-in a test injects. */
+export type Environment = Record<string, string | undefined>;
+
 /** What the changeset is about, from an explicit variable, a commit message or a branch. */
 export interface Context {
   title: string;

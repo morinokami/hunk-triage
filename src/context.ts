@@ -1,8 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-import type { Context } from "./types.ts";
-
-export type Environment = Record<string, string | undefined>;
+import type { Context, Environment } from "./types.ts";
 
 const DESCRIPTION_LIMIT = 1500;
 

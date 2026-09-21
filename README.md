@@ -15,7 +15,7 @@ It helps choose where to start reading; it does not find bugs or certify that a 
 
 - hunk 0.22.0 or later. The extension requires extension API 25, which first shipped in 0.22.0; 0.21 provides API 16. Only 0.22.0 has been tested, and the API is experimental, so later releases may break it.
 - A TypeSafe API key in `TYPESAFE_API_KEY`.
-- Git is used for optional commit/branch context. Failure to obtain context does not block classification.
+- Git, and optionally the [GitHub CLI](https://cli.github.com/) (`gh`), installed and logged in, supply the [context](#context) of a review. Failure to obtain context does not block classification.
 - Linux, macOS or Windows.
 
 ## Install
@@ -59,10 +59,12 @@ Disable all user extensions for one launch with `hunk diff --no-extensions`. Rem
 Jev is told what the change is for when the extension can find out, and judges from the list of changed files alone when it cannot. The title and description come from the review itself:
 
 - `hunk show` uses the commit message.
-- A review of the checked-out branch's work uses the branch name, except on shared branches like `main`. That covers `hunk diff`, `hunk diff --staged` and ranges that end at the working tree or `HEAD`, such as `hunk diff main` and `hunk diff main...HEAD`.
+- A review of the checked-out branch's work uses the title and description of the branch's open pull request, and the branch name when there is none; shared branches like `main` get neither. Such reviews are `hunk diff`, `hunk diff --staged` and ranges that end at the working tree or `HEAD`, such as `hunk diff main` and `hunk diff main...HEAD`.
 - A patch, a stash and a range between two other commits have no context.
 
-`HUNK_TRIAGE_TITLE` takes precedence over all of these, with `HUNK_TRIAGE_DESCRIPTION` to accompany it; a description without a title is ignored. Use them to supply a PR description yourself, or to give context to a review that has none:
+The pull request is read with `gh pr view`, so it is found wherever the GitHub CLI finds it, forks and GitHub Enterprise included, and only when `gh` is installed and logged in. A merged or closed pull request is ignored. `gh` is asked on every load, which usually takes about half a second; Git and `gh` together get 2 seconds, after which the branch name is used.
+
+`HUNK_TRIAGE_TITLE` takes precedence over all of these, with `HUNK_TRIAGE_DESCRIPTION` to accompany it, and nothing is looked up when it is set; a description without a title is ignored. Use them where `gh` cannot reach the pull request, or to give context to a review that has none:
 
 ```sh
 HUNK_TRIAGE_TITLE='Fix session expiration' hunk patch change.diff
@@ -83,18 +85,18 @@ timeout_ms = 5000
 core_threshold = 0.5
 ```
 
-| Setting          | Default      | Meaning                                                                                                       |
-| ---------------- | ------------ | ------------------------------------------------------------------------------------------------------------- |
-| `model`          | `jev-1.13.0` | Model ID. The default is pinned to the evaluated version.                                                     |
-| `timeout_ms`     | `5000`       | Total Jev request budget, including queues and retries; clamped to 500-20,000 ms. Git/cache time is separate. |
-| `core_threshold` | `0.5`        | Threshold separating core from supporting for source/other files; must be within 0-1.                         |
+| Setting          | Default      | Meaning                                                                                                               |
+| ---------------- | ------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `model`          | `jev-1.13.0` | Model ID. The default is pinned to the evaluated version.                                                             |
+| `timeout_ms`     | `5000`       | Total Jev request budget, including queues and retries; clamped to 500-20,000 ms. Context and cache time is separate. |
+| `core_threshold` | `0.5`        | Threshold separating core from supporting for source/other files; must be within 0-1.                                 |
 
 Repository `.hunk/config.toml` can override these settings.
 
 | Environment variable      | Purpose                                                                                   |
 | ------------------------- | ----------------------------------------------------------------------------------------- |
 | `TYPESAFE_API_KEY`        | API authentication; required to classify, including when cached results exist.            |
-| `HUNK_TRIAGE_TITLE`       | Optional explicit context, taking precedence over Git context; limited to 256 characters. |
+| `HUNK_TRIAGE_TITLE`       | Optional explicit context, taking precedence over any other; limited to 256 characters.   |
 | `HUNK_TRIAGE_DESCRIPTION` | Optional accompanying description; HTML comments removed and limited to 1,500 characters. |
 | `HUNK_TRIAGE_DEBUG`       | Optional path to a JSON diagnostics file (e.g. `/tmp/triage.json`), rewritten each run.   |
 | `XDG_CACHE_HOME`          | Cache root; absolute paths only. Defaults to `~/.cache` on every platform.                |
@@ -102,6 +104,8 @@ Repository `.hunk/config.toml` can override these settings.
 ## Data and cache
 
 Classification sends the first 16,000 characters of each eligible patch, all changed file paths and line counts, and any resolved context to `https://api.typesafe.ai/v1/systemone`. Binary content is not sent. The key is used only in the authorization header. See [TypeSafe's data handling documentation](https://docs.typesafe.ai/models#data-handling) for the service's policies.
+
+On a feature branch the extension also runs `gh pr view` in the directory under review. `gh` talks to GitHub with its own login, which the extension never reads. What comes back, the pull request's title and description, is sent to TypeSafe as the context, within the limits given under [Context](#context).
 
 Verdicts are stored as JSON under `${XDG_CACHE_HOME:-~/.cache}/hunk-triage/`. The home directory is resolved as hunk resolves its own, from `HOME` then `USERPROFILE`, so macOS and Windows use this same location rather than `~/Library/Caches` or `%LOCALAPPDATA%`. A relative `XDG_CACHE_HOME` is ignored; if no home directory can be resolved, classification continues without a cache.
 

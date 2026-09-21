@@ -15,14 +15,14 @@ export interface Verdict {
 /** The process environment, or the stand-in a test injects. */
 export type Environment = Record<string, string | undefined>;
 
-/** What the changeset is about, from an explicit variable, a commit message or a branch. */
+/** What the changeset is about, from an explicit variable, a pull request, a commit or a branch. */
 export interface Context {
   title: string;
   description: string;
 }
 
 /** Where a context was found. For diagnostics only: it reaches neither Jev nor the cache key. */
-export type ContextSource = "env" | "commit" | "branch";
+export type ContextSource = "env" | "pull-request" | "commit" | "branch";
 
 export interface ResolvedContext {
   context: Context;

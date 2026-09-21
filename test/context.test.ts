@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { basename } from "node:path";
 
 import type { Run } from "../src/run.ts";
+import type { Environment } from "../src/types.ts";
 
 import { resolveContext } from "../src/context.ts";
-import { withTempDir } from "./helpers.ts";
+import { pullRequest, runner, withTempDir } from "./helpers.ts";
 
 type Git = (...args: string[]) => void;
 
@@ -18,6 +19,15 @@ const review = (dir: string, what: string) => ({
   title: `${basename(dir)} ${what}`,
   sourceLabel: dir,
 });
+
+/** What gh does on a branch without a pull request, and without a login or a network. */
+const noPullRequest: Run = async () => {
+  throw new Error("no pull requests found");
+};
+
+/** Resolves the context of a review of `dir`; `gh` is a stand-in in every test. */
+const resolve = (dir: string, what: string, env: Environment = {}, gh = noPullRequest) =>
+  resolveContext(review(dir, what), dir, env, { run: runner(gh) });
 
 /** Runs `body` in a fresh repository whose only commit is on `main`. */
 const withRepo = (body: (dir: string, git: Git) => Promise<void>) =>
@@ -34,10 +44,10 @@ const withRepo = (body: (dir: string, git: Git) => Promise<void>) =>
 
 test("working tree and staged reviews take a feature branch name, never a shared one", () =>
   withRepo(async (dir, git) => {
-    expect(await resolveContext(review(dir, "working tree"), dir, {})).toBe(null);
+    expect(await resolve(dir, "working tree")).toBe(null);
 
     git("checkout", "-b", "fix/review-order");
-    expect(await resolveContext(review(dir, "staged changes"), dir, {})).toStrictEqual({
+    expect(await resolve(dir, "staged changes")).toStrictEqual({
       context: { title: "fix/review-order", description: "" },
       source: "branch",
     });
@@ -48,13 +58,12 @@ test("a range takes the branch name when it ends at the working tree or HEAD", (
     git("checkout", "-b", "fix/review-order");
 
     for (const range of ["main", "HEAD~1", "main..", "main...HEAD"]) {
-      const resolved = await resolveContext(review(dir, range), dir, {});
-      expect(resolved?.context.title).toBe("fix/review-order");
+      expect((await resolve(dir, range))?.context.title).toBe("fix/review-order");
     }
 
     // Between two other commits, the checked-out branch says nothing about the change.
     for (const range of ["main..other", "v1...v2", "1a2b3c4..5d6e7f8"]) {
-      expect(await resolveContext(review(dir, range), dir, {})).toBe(null);
+      expect(await resolve(dir, range)).toBe(null);
     }
   }));
 
@@ -63,23 +72,107 @@ test("a stash and another VCS's working copy have no branch behind them", () =>
     git("checkout", "-b", "fix/review-order");
 
     for (const what of ["stash", "stash stash@{1}", "working copy"]) {
-      expect(await resolveContext(review(dir, what), dir, {})).toBe(null);
+      expect(await resolve(dir, what)).toBe(null);
     }
   }));
 
+test("a feature branch takes its open pull request, asked of gh in the review's directory", () =>
+  withRepo(async (dir, git) => {
+    git("checkout", "-b", "fix/review-order");
+    const asked: unknown[] = [];
+
+    const gh: Run = async (_program, args, options) => {
+      asked.push([args, options.cwd]);
+      return pullRequest({ body: "<!-- left by the template -->\nWhy and how." });
+    };
+
+    expect(await resolve(dir, "main", {}, gh)).toStrictEqual({
+      context: { title: "Fix the review order", description: "Why and how." },
+      source: "pull-request",
+    });
+    expect(asked).toStrictEqual([[["pr", "view", "--json", "title,body,state"], dir]]);
+  }));
+
+test("the branch name stands when gh has no open pull request to show", () =>
+  withRepo(async (dir, git) => {
+    git("checkout", "-b", "fix/review-order");
+
+    const answers = [
+      pullRequest({ state: "MERGED" }),
+      pullRequest({ state: "CLOSED" }),
+      pullRequest({ title: "  " }),
+      JSON.stringify([pullRequest()]),
+      "To get started with GitHub CLI, please run: gh auth login",
+    ];
+
+    for (const answer of answers) {
+      expect((await resolve(dir, "working tree", {}, async () => answer))?.source).toBe("branch");
+    }
+
+    expect((await resolve(dir, "working tree", {}, noPullRequest))?.source).toBe("branch");
+  }));
+
+test("gh is not asked about a shared branch, a commit or an explicit context", () =>
+  withRepo(async (dir, git) => {
+    let asked = 0;
+
+    const gh: Run = async () => {
+      asked++;
+      return pullRequest();
+    };
+
+    expect(await resolve(dir, "working tree", {}, gh)).toBe(null);
+    expect((await resolve(dir, "show HEAD", {}, gh))?.source).toBe("commit");
+
+    git("checkout", "-b", "fix/review-order");
+    const explicit = await resolve(dir, "working tree", { HUNK_TRIAGE_TITLE: "Explicit" }, gh);
+    expect(explicit?.source).toBe("env");
+
+    expect(asked).toBe(0);
+  }));
+
+test("a gh that never answers costs the pull request, not the branch name", async () => {
+  const signals: AbortSignal[] = [];
+
+  // Git answers at once and gh hangs without watching its signal, as a stuck connection would.
+  const run: Run = (program, _args, options) => {
+    signals.push(options.signal);
+    return program === "git" ? Promise.resolve("fix/review-order") : new Promise(() => {});
+  };
+
+  const resolved = await resolveContext(
+    review(tmpdir(), "main"),
+    tmpdir(),
+    {},
+    {
+      run,
+      timeoutMs: 20,
+    },
+  );
+
+  expect(resolved).toStrictEqual({
+    context: { title: "fix/review-order", description: "" },
+    source: "branch",
+  });
+
+  // Both programs were held to one deadline, not given one each.
+  expect(signals).toHaveLength(2);
+  expect(signals[0]).toBe(signals[1]!);
+});
+
 test("show reads the commit message and ignores option-like revisions", () =>
   withRepo(async (dir) => {
-    expect(await resolveContext(review(dir, "show HEAD"), dir, {})).toStrictEqual({
+    expect(await resolve(dir, "show HEAD")).toStrictEqual({
       context: { title: "Fix ordering", description: "Commit body" },
       source: "commit",
     });
-    expect(await resolveContext(review(dir, "show --help"), dir, {})).toBe(null);
+    expect(await resolve(dir, "show --help")).toBe(null);
   }));
 
 test("explicit context wins over Git and loses its HTML comments", () =>
   withRepo(async (dir) => {
     expect(
-      await resolveContext(review(dir, "show HEAD"), dir, {
+      await resolve(dir, "show HEAD", {
         HUNK_TRIAGE_TITLE: "Explicit",
         HUNK_TRIAGE_DESCRIPTION: "a<!-- hidden -->b",
       }),
@@ -91,13 +184,13 @@ test("every source loses its HTML comments and is cut to the limits", () =>
     const body = `<!-- left by the template -->\n${"b".repeat(2000)}`;
     git("commit", "--allow-empty", "-m", `${"s".repeat(300)}\n\n${body}`);
 
-    const commit = await resolveContext(review(dir, "show HEAD"), dir, {});
+    const commit = await resolve(dir, "show HEAD");
     expect(commit!.context).toStrictEqual({
       title: "s".repeat(256),
       description: "b".repeat(1500),
     });
 
-    const explicit = await resolveContext(review(dir, "show HEAD"), dir, {
+    const explicit = await resolve(dir, "show HEAD", {
       HUNK_TRIAGE_TITLE: "t".repeat(300),
       HUNK_TRIAGE_DESCRIPTION: "  padded  ",
     });
@@ -131,7 +224,7 @@ test("a patch review has no context, even on a feature branch", () =>
   withRepo(async (dir, git) => {
     git("checkout", "-b", "fix/review-order");
 
-    expect(await resolveContext(patch, dir, {})).toBe(null);
+    expect(await resolveContext(patch, dir, {}, { run: runner(noPullRequest) })).toBe(null);
   }));
 
 test("a changeset that another extension left without its label only loses its context", async () => {

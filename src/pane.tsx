@@ -3,23 +3,12 @@ import type { ExtensionPaneProps } from "hunkdiff/extension";
 
 import { useEffect, useRef } from "react";
 
-import type { Group, PaneState } from "./types.ts";
+import type { PaneState } from "./types.ts";
 
-type PaneFile = ExtensionPaneProps["files"][number];
+import { countGroups, groupOf } from "./classify.ts";
 
 // The directory line is the first thing dropped when the pane gets narrow.
 const DIRECTORY_MIN_WIDTH = 24;
-
-function countByGroup(files: readonly PaneFile[], state: PaneState): Map<Group, number> {
-  const counts = new Map<Group, number>();
-
-  for (const file of files) {
-    const group = state.groups.get(file.id) ?? "unclassified";
-    counts.set(group, (counts.get(group) ?? 0) + 1);
-  }
-
-  return counts;
-}
 
 function splitPath(path: string) {
   const slash = path.lastIndexOf("/");
@@ -45,10 +34,9 @@ export function GroupsPane({
     if (selectedFileId) scroll.current?.scrollChildIntoView(`triage-${selectedFileId}`);
   }, [selectedFileId, files, width, height]);
 
-  const counts = countByGroup(files, state);
-
-  // Files arrive in review order, so a group heading belongs on the first file of each run.
-  let previous: Group | undefined;
+  const classified = state.mode === "classified";
+  const rows = files.map((file) => ({ file, group: groupOf(state.groups, file.id) }));
+  const counts = countGroups(rows.map((row) => row.group));
 
   return (
     <scrollbox ref={scroll} width={width} height={height} scrollX={false}>
@@ -60,15 +48,13 @@ export function GroupsPane({
         </text>
       )}
 
-      {files.map((file) => {
-        const group = state.groups.get(file.id) ?? "unclassified";
-        const heading = state.mode === "classified" && group !== previous;
-        previous = group;
+      {rows.map(({ file, group }, index) => {
+        // Files arrive in review order, so a group heading belongs on the first file of each run.
+        const heading = classified && group !== rows[index - 1]?.group;
 
         const { directory, basename } = splitPath(file.path);
         const selected = file.id === selectedFileId;
-        const dimmed =
-          state.mode === "classified" && (group === "mechanical" || group === "generated");
+        const dimmed = classified && (group === "mechanical" || group === "generated");
 
         return (
           <box key={file.id} flexDirection="column" flexShrink={0}>

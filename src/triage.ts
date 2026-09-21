@@ -6,7 +6,7 @@ import type { Fetch } from "./jev.ts";
 import type { Changeset, Environment, TriageResult, Verdict } from "./types.ts";
 
 import { cacheKey, defaultCache } from "./cache.ts";
-import { applyVerdicts, countsLabel, eligible } from "./classify.ts";
+import { applyVerdicts, countsLabel, eligible, groupOf } from "./classify.ts";
 import { resolveContext } from "./context.ts";
 import { queryFiles } from "./jev.ts";
 
@@ -138,7 +138,7 @@ async function writeDebug(path: string, changeset: Changeset, result: TriageResu
     ...(result.reason ? { reason: result.reason } : {}),
     files: result.changeset.files.map((file) => ({
       path: file.path,
-      group: result.state.groups.get(file.id) ?? "unclassified",
+      group: groupOf(result.state.groups, file.id),
       verdict: result.verdicts.get(file.id) ?? null,
     })),
   };

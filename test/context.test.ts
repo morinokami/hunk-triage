@@ -12,11 +12,12 @@ type Git = (...args: string[]) => void;
 /** Runs `body` in a fresh repository whose only commit is on `main`. */
 const withRepo = (body: (dir: string, git: Git) => Promise<void>) =>
   withTempDir(async (dir) => {
-    const git: Git = (...args) => void execFileSync("git", args, { cwd: dir, stdio: "pipe" });
     const identity = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
+    const git: Git = (...args) =>
+      void execFileSync("git", [...identity, ...args], { cwd: dir, stdio: "pipe" });
 
     git("init", "-b", "main");
-    git(...identity, "commit", "--allow-empty", "-m", "Fix ordering\n\nCommit body");
+    git("commit", "--allow-empty", "-m", "Fix ordering\n\nCommit body");
 
     await body(dir, git);
   });
@@ -47,6 +48,45 @@ test("explicit context wins over Git and loses its HTML comments", () =>
       }),
     ).toStrictEqual({ title: "Explicit", description: "ab" });
   }));
+
+test("every source loses its HTML comments and is cut to the limits", () =>
+  withRepo(async (dir, git) => {
+    const body = `<!-- left by the template -->\n${"b".repeat(2000)}`;
+    git("commit", "--allow-empty", "-m", `${"s".repeat(300)}\n\n${body}`);
+
+    const commit = (await resolveContext("repo show HEAD", dir, {}))!;
+    expect(commit.title).toBe("s".repeat(256));
+    expect(commit.description).toBe("b".repeat(1500));
+
+    const explicit = await resolveContext("repo show HEAD", dir, {
+      HUNK_TRIAGE_TITLE: "t".repeat(300),
+      HUNK_TRIAGE_DESCRIPTION: "  padded  ",
+    });
+    expect(explicit).toStrictEqual({ title: "t".repeat(256), description: "padded" });
+  }));
+
+test("a comment that is never closed stays, and a flood of them costs no time", async () => {
+  const describe = async (description: string) => {
+    const env = { HUNK_TRIAGE_TITLE: "Explicit", HUNK_TRIAGE_DESCRIPTION: description };
+
+    return (await resolveContext("Patch review: stdin patch", tmpdir(), env))!.description;
+  };
+
+  expect(await describe("a<!-- one --><!-- two\n-->b<!-- open")).toBe("ab<!-- open");
+
+  // A regex with a lazy quantifier needs over a minute for this megabyte.
+  const start = performance.now();
+  expect(await describe("<!--".repeat(262_144))).toBe("<!--".repeat(375));
+  expect(performance.now() - start).toBeLessThan(2000);
+});
+
+test("a limit that falls inside an emoji does not leave half of it behind", async () => {
+  const env = { HUNK_TRIAGE_TITLE: `${"t".repeat(255)}\u{1F680}` };
+  const { title } = (await resolveContext("Patch review: stdin patch", tmpdir(), env))!;
+
+  expect(title).toHaveLength(256);
+  expect(title.isWellFormed()).toBe(true);
+});
 
 test("a patch review has no context, even on a feature branch", () =>
   withRepo(async (dir, git) => {

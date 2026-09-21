@@ -7,9 +7,8 @@ import type { Environment } from "./context.ts";
 import type { Context, DiffFile, Verdict } from "./types.ts";
 
 import { isVerdict } from "./guards.ts";
+import { sentPatch } from "./jev.ts";
 import { QUESTIONS_VERSION } from "./questions.ts";
-
-export const PATCH_LIMIT = 16_000;
 
 export interface Cache {
   read(key: string): Promise<Verdict | undefined>;
@@ -32,7 +31,7 @@ export function cacheKey(
     context,
     [...paths].sort(),
     file.path,
-    file.patch.slice(0, PATCH_LIMIT),
+    sentPatch(file),
   ]);
 
   return createHash("sha256").update(inputs).digest("hex").slice(0, 32);

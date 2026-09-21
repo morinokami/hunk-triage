@@ -1,5 +1,7 @@
+import { basename } from "node:path";
+
 import type { Run } from "./run.ts";
-import type { Context, Environment } from "./types.ts";
+import type { Changeset, Context, Environment } from "./types.ts";
 
 import { abortable } from "./abortable.ts";
 import { execute } from "./run.ts";
@@ -54,9 +56,39 @@ function context(title: string, description: string): Context {
   };
 }
 
+/** What a changeset shows, as far as that decides where its context comes from. */
+type Review = { kind: "commit"; revision: string } | { kind: "branch" };
+
+/**
+ * hunk 0.22's Git adapter labels a changeset with the repository root and titles it
+ * "<directory name> <what>". A patch or a file comparison is titled otherwise and has no
+ * commit or branch behind it.
+ */
+function reviewOf({ title, sourceLabel }: Pick<Changeset, "title" | "sourceLabel">): Review | null {
+  const prefix = `${basename(sourceLabel)} `;
+  if (!title.startsWith(prefix)) return null;
+
+  const what = title.slice(prefix.length);
+
+  const revision = /^show (.+)$/.exec(what)?.[1];
+  if (revision) return revision.startsWith("-") ? null : { kind: "commit", revision };
+
+  if (what === "working tree" || what === "staged changes") return { kind: "branch" };
+
+  // A stash is not the branch's work, and jj and Sapling review a "working copy".
+  if (/^stash( |$)/.test(what) || what === "working copy") return null;
+
+  // What remains is the range of `hunk diff <range>`. One that ends at the working tree
+  // (`main`) or at HEAD (`main...`, `main..HEAD`) is the checked-out branch's work; one
+  // between two other commits may be anyone's.
+  const head = /\.\.\.?(.*)$/.exec(what)?.[1];
+
+  return head === undefined || head === "" || head === "HEAD" ? { kind: "branch" } : null;
+}
+
 /** Explicit environment variables win; Git is the fallback, and no context is fine. */
 export async function resolveContext(
-  title: string,
+  changeset: Pick<Changeset, "title" | "sourceLabel">,
   cwd: string,
   env: Environment,
   options: ContextOptions = {},
@@ -65,36 +97,34 @@ export async function resolveContext(
 
   if (explicitTitle?.trim()) return context(explicitTitle, env.HUNK_TRIAGE_DESCRIPTION ?? "");
 
-  const run = options.run ?? execute;
-
-  // Every command shares this deadline, so the review waits for context this long at most.
-  const signal = AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS);
-
-  const git = async (args: string[]) => {
-    // Checked before the command starts, so nothing is spawned once the deadline has passed.
-    signal.throwIfAborted();
-
-    return abortable(run("git", args, { cwd, signal }), signal);
-  };
-
+  // hunk hands every transform what the one before it returned, so even the title and the
+  // label are read inside the try: a changeset without them only loses its context.
   try {
-    const revision = /^.+ show (.+)$/.exec(title)?.[1];
+    const review = reviewOf(changeset);
+    if (!review) return null;
 
-    if (revision && !revision.startsWith("-")) {
-      const message = await git(["log", "-1", "--format=%B", revision, "--"]);
+    const run = options.run ?? execute;
+
+    // Every command shares this deadline, so the review waits for context this long at most.
+    const signal = AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS);
+
+    const git = async (args: string[]) => {
+      // Checked before the command starts, so nothing is spawned once the deadline has passed.
+      signal.throwIfAborted();
+
+      return abortable(run("git", args, { cwd, signal }), signal);
+    };
+
+    if (review.kind === "commit") {
+      const message = await git(["log", "-1", "--format=%B", review.revision, "--"]);
       const [subject, ...body] = message.split("\n");
-      if (!subject) return null;
 
-      return context(subject, body.join("\n"));
+      return subject ? context(subject, body.join("\n")) : null;
     }
 
-    if (/ (working tree|staged changes)$/.test(title)) {
-      const branch = await git(["rev-parse", "--abbrev-ref", "HEAD"]);
+    const branch = await git(["rev-parse", "--abbrev-ref", "HEAD"]);
 
-      if (branch && !SHARED_BRANCHES.includes(branch)) {
-        return context(branch, "");
-      }
-    }
+    if (branch && !SHARED_BRANCHES.includes(branch)) return context(branch, "");
   } catch {
     /* Context is optional, including outside a Git repository. */
   }

@@ -19,8 +19,8 @@ import {
 const env = { TYPESAFE_API_KEY: "test-only" };
 const config = readConfig();
 
-// These runs never reach Git, because the helper title is neither a `show` nor a working
-// tree; the directory only has to exist on every platform.
+// These runs never reach Git, because the helper changeset is a patch review, which has no
+// repository behind it; the directory only has to exist on every platform.
 const cwd = tmpdir();
 
 test("partial failure puts failed and skipped files last", async () => {

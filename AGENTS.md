@@ -26,3 +26,11 @@ A [hunk](https://www.hunk.dev/) extension that orders changed files for review w
 
 - Tests use `bun:test` and inject `fetch`, `cache` and `env` through the options of `triage()` and `queryFiles()`; builders live in `test/helpers.ts`. Never call the real API, read the real environment or touch the real cache directory, and prefer this injection over module mocks.
 - CI runs on Linux, macOS and Windows. Keep code and tests platform-neutral: `node:path` and `os.tmpdir()`, no hard-coded POSIX paths or shell commands.
+
+## Releasing
+
+- `main` is what users run. `hunk extension install morinokami/hunk-triage` clones the default branch's HEAD and `hunk extension update` re-clones it, so a merge reaches users without any tag. Every PR must leave `main` shippable: split a feature only into PRs that are each complete or inert.
+- A release is a named checkpoint, not a delivery gate: the `@vX.Y.Z` pin target, the version `hunk extension list` reports (read from `package.json`), and where users learn what changed. Release notes live in GitHub Releases only; there is no CHANGELOG.md.
+- Cut one when users have something to learn. While 0.x, bump the minor version when the README contract changes (behavior, settings, defaults, what is sent to the API, the required hunk version or `apiVersion`) and the patch version for fixes. Refactors, tests and tooling alone don't need a release.
+- The procedure is the `/release` skill, `.claude/skills/release/SKILL.md`: a version-bump PR whose body is the release notes, then an annotated tag on the merged commit and a draft GitHub Release that the user publishes. Follow that file rather than improvising the steps; it can be followed by hand too.
+- Tags and releases are outward-facing. Create or push them only when the user asks.

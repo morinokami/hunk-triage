@@ -21,6 +21,14 @@ export interface Context {
   description: string;
 }
 
+/** Where a context was found. For diagnostics only: it reaches neither Jev nor the cache key. */
+export type ContextSource = "env" | "commit" | "branch";
+
+export interface ResolvedContext {
+  context: Context;
+  source: ContextSource;
+}
+
 /** Review order: files are grouped in this order, and sorted by score inside a group. */
 export const GROUPS = [
   "core",
@@ -47,6 +55,8 @@ export interface TriageResult {
   changeset: ExtensionChangeset;
   state: PaneState;
   context: Context | null;
+  contextSource: ContextSource | null;
+  contextMs: number;
   verdicts: ReadonlyMap<string, Verdict>;
   asked: number;
   cached: number;

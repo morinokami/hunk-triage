@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { diskCache } from "../src/cache.ts";
 import { readConfig } from "../src/config.ts";
@@ -152,6 +152,56 @@ test("debug output names each file's group and never contains the API key", () =
     expect(debug).not.toContain("test-only");
     expect(JSON.parse(debug).files[0].group).toBe("core");
   }));
+
+test("debug output says where the context came from and how long finding it took", () =>
+  withTempDir(async (dir) => {
+    const debugPath = join(dir, "debug.json");
+    const debugged = { ...env, HUNK_TRIAGE_DEBUG: debugPath };
+    const options = { cache: memoryCache(), fetch: async () => answer([verdict()]) };
+
+    await triage(changeset(file("a")), cwd, config, {
+      ...options,
+      env: { ...debugged, HUNK_TRIAGE_TITLE: "Fix ordering" },
+    });
+
+    const explicit = JSON.parse(await readFile(debugPath, "utf8"));
+    expect(explicit.context).toStrictEqual({ title: "Fix ordering", description: "" });
+    expect(explicit.context_source).toBe("env");
+    expect(explicit.context_ms).toBeGreaterThanOrEqual(0);
+
+    await triage(changeset(file("a")), cwd, config, { ...options, env: debugged });
+
+    const none = JSON.parse(await readFile(debugPath, "utf8"));
+    expect(none.context).toBe(null);
+    expect(none.context_source).toBe(null);
+  }));
+
+test("the same context from another source is the same request and the same cache entry", async () => {
+  const cache = memoryCache();
+  const told: unknown[] = [];
+
+  const options = {
+    cache,
+    // The only command is Git naming the branch.
+    run: async () => "fix/review-order",
+    fetch: async (_: string, init: RequestInit) => {
+      told.push(requested(init).body.state.pull_request);
+      return answer([verdict()]);
+    },
+  };
+  const input = { ...changeset(file("a")), title: `${basename(cwd)} main`, sourceLabel: cwd };
+
+  const branch = await triage(input, cwd, config, { ...options, env });
+  const explicit = await triage(input, cwd, config, {
+    ...options,
+    env: { ...env, HUNK_TRIAGE_TITLE: "fix/review-order" },
+  });
+
+  expect([branch.contextSource, explicit.contextSource]).toStrictEqual(["branch", "env"]);
+  expect(told).toStrictEqual([{ title: "fix/review-order", description: "" }]);
+  expect(explicit.cached).toBe(1);
+  expect(cache.entries.size).toBe(1);
+});
 
 test("a classified review is announced as info with its counts, failures included", async () => {
   const result = await triage(changeset(file("fail"), file("ok")), cwd, config, {

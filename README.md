@@ -70,6 +70,8 @@ HUNK_TRIAGE_TITLE='Fix session expiration' hunk patch change.diff
 
 Whatever the source, the title is limited to 256 characters and the description to 1,500, with HTML comments removed. A review without context is classified all the same.
 
+To see what a review got, set `HUNK_TRIAGE_DEBUG`: the diagnostics file shows the context, where it came from (`context_source`) and how long finding it took (`context_ms`).
+
 ## Configuration
 
 Optional settings in `~/.config/hunk/config.toml`:

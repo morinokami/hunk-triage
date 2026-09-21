@@ -26,6 +26,14 @@ hunk extension install morinokami/hunk-triage
 
 Installation follows [hunk's extension workflow](https://www.hunk.dev/docs/extend/extensions/); the extension loads automatically on subsequent launches.
 
+This installs the latest `main`, and `hunk extension update hunk-triage` fetches it again. [Releases](https://github.com/morinokami/hunk-triage/releases) describe what changed. To stay on one release instead, install its tag:
+
+```sh
+hunk extension install morinokami/hunk-triage@<tag>
+```
+
+A pinned install stays on that tag when updated. To move to another release, remove the extension and install the new tag.
+
 Set `TYPESAFE_API_KEY` in the environment used to launch hunk, then review normally:
 
 ```sh

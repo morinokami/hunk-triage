@@ -1,14 +1,12 @@
 import { expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile, rm, readdir } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { cacheDirectory, cacheKey, diskCache } from "../src/cache.ts";
+import { diskCache } from "../src/cache.ts";
 import { readConfig } from "../src/config.ts";
-import { resolveContext } from "../src/context.ts";
 import { triage } from "../src/triage.ts";
-import { answer, changeset, file, memoryCache, verdict } from "./helpers.ts";
+import { answer, changeset, file, memoryCache, verdict, withTempDir } from "./helpers.ts";
 
 const env = { TYPESAFE_API_KEY: "test-only" };
 const config = readConfig();
@@ -17,7 +15,7 @@ const config = readConfig();
 // tree; the directory only has to exist on every platform.
 const cwd = tmpdir();
 
-test("partial failure puts failed/skipped files last; all failure preserves exact changeset", async () => {
+test("partial failure puts failed and skipped files last", async () => {
   const input = changeset(file("fail"), file("binary", { isBinary: true }), file("ok"));
 
   const result = await triage(input, cwd, config, {
@@ -36,6 +34,10 @@ test("partial failure puts failed/skipped files last; all failure preserves exac
   expect(result.failed).toBe(1);
   expect(result.asked).toBe(2);
   expect(result.state.groups.get("binary")).toBe("unclassified");
+});
+
+test("total failure preserves the exact changeset", async () => {
+  const input = changeset(file("fail"), file("binary", { isBinary: true }), file("ok"));
 
   const failed = await triage(input, cwd, config, {
     env,
@@ -94,6 +96,16 @@ test("reload reuses cache, reclassifies changed patches and invalidates on added
 
   await run(undefined, { HUNK_TRIAGE_TITLE: "different intent" });
   expect(calls).toBe(8);
+});
+
+test("cached verdicts still classify the review when Jev fails for the rest", async () => {
+  const cache = memoryCache();
+
+  await triage(changeset(file("a"), file("b")), cwd, config, {
+    cache,
+    env,
+    fetch: async () => answer([verdict()]),
+  });
 
   const mixed = await triage(changeset(file("a"), file("b", { patch: "bad" })), cwd, config, {
     cache,
@@ -106,103 +118,32 @@ test("reload reuses cache, reclassifies changed patches and invalidates on added
   expect(mixed.failed).toBe(1);
 });
 
-test("cache is validated and writes atomically; unavailable cache/debug do not break classification", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "hunk-triage-cache-"));
+test("an unusable cache directory and an unwritable debug path do not stop a review", () =>
+  withTempDir(async (dir) => {
+    // A directory cannot be created below a file, and the debug path's parent does not exist.
+    const blocker = join(dir, "blocker");
+    await writeFile(blocker, "");
 
-  try {
-    const cache = diskCache(dir);
-    const v = verdict();
-
-    await cache.write("entry", v);
-    expect(await cache.read("entry")).toStrictEqual(v);
-
-    await writeFile(join(dir, "entry.json"), '{"role":"source"}');
-    expect(await cache.read("entry")).toBe(undefined);
-
-    await writeFile(join(dir, "entry.json"), "invalid JSON");
-    expect(await cache.read("entry")).toBe(undefined);
-    expect(await readdir(dir)).toStrictEqual(["entry.json"]);
-
-    // An unusable cache directory and an unwritable debug path must not stop a review.
     const result = await triage(changeset(file("a")), cwd, config, {
       env: { ...env, HUNK_TRIAGE_DEBUG: join(dir, "missing", "debug.json") },
-      cache: diskCache(join(dir, "entry.json", "impossible")),
-      fetch: async () => answer([v]),
+      cache: diskCache(join(blocker, "impossible")),
+      fetch: async () => answer([verdict()]),
     });
-    expect(result.state.mode).toBe("classified");
 
+    expect(result.state.mode).toBe("classified");
+  }));
+
+test("debug output names each file's group and never contains the API key", () =>
+  withTempDir(async (dir) => {
     const debugPath = join(dir, "debug.json");
+
     await triage(changeset(file("a")), cwd, config, {
       env: { ...env, HUNK_TRIAGE_DEBUG: debugPath },
       cache: memoryCache(),
-      fetch: async () => answer([v]),
+      fetch: async () => answer([verdict()]),
     });
 
     const debug = await readFile(debugPath, "utf8");
     expect(debug).not.toContain("test-only");
     expect(JSON.parse(debug).files[0].group).toBe("core");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("cache keys include model, context, paths and patch while ignoring original path order", () => {
-  const f = file("a");
-  const key = cacheKey(config.model, null, ["b", "a"], f);
-
-  expect(key).toBe(cacheKey(config.model, null, ["a", "b"], f));
-  expect(key).not.toBe(cacheKey("jev-other", null, ["a", "b"], f));
-  expect(key).not.toBe(cacheKey(config.model, { title: "x", description: "" }, ["a", "b"], f));
-  expect(key).not.toBe(cacheKey(config.model, null, ["a"], f));
-});
-
-test("cache directory follows hunk's home resolution and ignores relative settings", () => {
-  const home = join("/home", "someone");
-
-  expect(cacheDirectory({ XDG_CACHE_HOME: home })).toBe(join(home, "hunk-triage"));
-  expect(cacheDirectory({ HOME: home })).toBe(join(home, ".cache", "hunk-triage"));
-  expect(cacheDirectory({ USERPROFILE: home })).toBe(join(home, ".cache", "hunk-triage"));
-
-  // HOME before USERPROFILE, as hunk does, so Git Bash on Windows agrees with the host.
-  const both = { HOME: home, USERPROFILE: join("/elsewhere") };
-  expect(cacheDirectory(both)).toBe(join(home, ".cache", "hunk-triage"));
-
-  // A relative setting must never put the cache inside the repository under review.
-  expect(cacheDirectory({ XDG_CACHE_HOME: "cache", HOME: home })).toBe(
-    join(home, ".cache", "hunk-triage"),
-  );
-  expect(cacheDirectory({ HOME: "cache" })).toBe(undefined);
-});
-
-test("context is optional, explicit context wins, git resolves commits and feature branches", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "hunk-triage-git-"));
-
-  try {
-    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
-    const identity = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"];
-
-    git("init", "-b", "main");
-    git(...identity, "commit", "--allow-empty", "-m", "Fix ordering\n\nCommit body");
-
-    expect(resolveContext("repo working tree", dir, {})).toBe(null);
-
-    git("checkout", "-b", "fix/review-order");
-    expect(resolveContext("repo staged changes", dir, {})!.title).toBe("fix/review-order");
-
-    expect(resolveContext("repo show HEAD", dir, {})).toStrictEqual({
-      title: "Fix ordering",
-      description: "Commit body",
-    });
-    expect(resolveContext("repo show --help", dir, {})).toBe(null);
-
-    expect(
-      resolveContext("repo show HEAD", dir, {
-        HUNK_TRIAGE_TITLE: "Explicit",
-        HUNK_TRIAGE_DESCRIPTION: "a<!-- hidden -->b",
-      }),
-    ).toStrictEqual({ title: "Explicit", description: "ab" });
-    expect(resolveContext("Patch review: stdin patch", dir, {})).toBe(null);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
+  }));

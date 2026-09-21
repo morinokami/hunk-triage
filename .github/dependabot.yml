@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: bun
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    cooldown:
+      default-days: 3
+    groups:
+      hunk-runtime:
+        patterns: ["hunkdiff", "react", "@types/react", "@opentui/*"]
+      tooling:
+        patterns: ["*"]
+        exclude-patterns: ["hunkdiff", "react", "@types/react", "@opentui/*"]

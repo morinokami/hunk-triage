@@ -57,6 +57,14 @@ export async function withTempDir<T>(body: (dir: string) => T | Promise<T>): Pro
   }
 }
 
+/** What a fake transport was asked: the decoded body, and its files under either state key. */
+export function requested(init: RequestInit) {
+  const body = JSON.parse(init.body as string);
+  const files: { path: string; patch: string }[] = body.state.files ?? [body.state.file];
+
+  return { body, files };
+}
+
 /** One Jev response carrying the given verdicts, in the shape the parser expects. */
 export function answer(values: Verdict[]): Response {
   const answers = values.flatMap(

@@ -31,6 +31,8 @@ export async function triage(
     changeset,
     state: { mode: "unavailable", groups: new Map() },
     context: null,
+    contextSource: null,
+    contextMs: 0,
     verdicts: new Map(),
     asked: 0,
     cached: 0,
@@ -50,7 +52,11 @@ export async function triage(
       return result;
     }
 
-    result.context = await resolveContext(changeset, cwd, env, { run: options.run });
+    const resolving = performance.now();
+    const resolved = await resolveContext(changeset, cwd, env, { run: options.run });
+    result.context = resolved?.context ?? null;
+    result.contextSource = resolved?.source ?? null;
+    result.contextMs = Math.round(performance.now() - resolving);
 
     const targets = changeset.files.filter(eligible);
     if (!targets.length) {
@@ -132,6 +138,8 @@ async function writeDebug(path: string, changeset: Changeset, result: TriageResu
   const debug = {
     title: changeset.title,
     context: result.context,
+    context_source: result.contextSource,
+    context_ms: result.contextMs,
     mode: result.state.mode,
     elapsed_ms: result.elapsedMs,
     asked: result.asked,

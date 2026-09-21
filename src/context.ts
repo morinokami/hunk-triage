@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 
 import type { Run } from "./run.ts";
-import type { Changeset, Context, Environment } from "./types.ts";
+import type { Changeset, ContextSource, Environment, ResolvedContext } from "./types.ts";
 
 import { abortable } from "./abortable.ts";
 import { execute } from "./run.ts";
@@ -49,11 +49,13 @@ function cut(text: string, limit: number): string {
  * HTML comments, and a squash merge copies them into the commit message; the limits bound
  * what a reviewed repository can add to every request.
  */
-function context(title: string, description: string): Context {
-  return {
+function found(source: ContextSource, title: string, description = ""): ResolvedContext {
+  const context = {
     title: cut(title, TITLE_LIMIT),
     description: cut(withoutComments(description).trim(), DESCRIPTION_LIMIT),
   };
+
+  return { context, source };
 }
 
 /** What a changeset shows, as far as that decides where its context comes from. */
@@ -92,10 +94,10 @@ export async function resolveContext(
   cwd: string,
   env: Environment,
   options: ContextOptions = {},
-): Promise<Context | null> {
+): Promise<ResolvedContext | null> {
   const explicitTitle = env.HUNK_TRIAGE_TITLE;
 
-  if (explicitTitle?.trim()) return context(explicitTitle, env.HUNK_TRIAGE_DESCRIPTION ?? "");
+  if (explicitTitle?.trim()) return found("env", explicitTitle, env.HUNK_TRIAGE_DESCRIPTION);
 
   // hunk hands every transform what the one before it returned, so even the title and the
   // label are read inside the try: a changeset without them only loses its context.
@@ -119,12 +121,12 @@ export async function resolveContext(
       const message = await git(["log", "-1", "--format=%B", review.revision, "--"]);
       const [subject, ...body] = message.split("\n");
 
-      return subject ? context(subject, body.join("\n")) : null;
+      return subject ? found("commit", subject, body.join("\n")) : null;
     }
 
     const branch = await git(["rev-parse", "--abbrev-ref", "HEAD"]);
 
-    if (branch && !SHARED_BRANCHES.includes(branch)) return context(branch, "");
+    if (branch && !SHARED_BRANCHES.includes(branch)) return found("branch", branch);
   } catch {
     /* Context is optional, including outside a Git repository. */
   }

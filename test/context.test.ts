@@ -38,8 +38,8 @@ test("working tree and staged reviews take a feature branch name, never a shared
 
     git("checkout", "-b", "fix/review-order");
     expect(await resolveContext(review(dir, "staged changes"), dir, {})).toStrictEqual({
-      title: "fix/review-order",
-      description: "",
+      context: { title: "fix/review-order", description: "" },
+      source: "branch",
     });
   }));
 
@@ -48,7 +48,8 @@ test("a range takes the branch name when it ends at the working tree or HEAD", (
     git("checkout", "-b", "fix/review-order");
 
     for (const range of ["main", "HEAD~1", "main..", "main...HEAD"]) {
-      expect((await resolveContext(review(dir, range), dir, {}))?.title).toBe("fix/review-order");
+      const resolved = await resolveContext(review(dir, range), dir, {});
+      expect(resolved?.context.title).toBe("fix/review-order");
     }
 
     // Between two other commits, the checked-out branch says nothing about the change.
@@ -69,8 +70,8 @@ test("a stash and another VCS's working copy have no branch behind them", () =>
 test("show reads the commit message and ignores option-like revisions", () =>
   withRepo(async (dir) => {
     expect(await resolveContext(review(dir, "show HEAD"), dir, {})).toStrictEqual({
-      title: "Fix ordering",
-      description: "Commit body",
+      context: { title: "Fix ordering", description: "Commit body" },
+      source: "commit",
     });
     expect(await resolveContext(review(dir, "show --help"), dir, {})).toBe(null);
   }));
@@ -82,7 +83,7 @@ test("explicit context wins over Git and loses its HTML comments", () =>
         HUNK_TRIAGE_TITLE: "Explicit",
         HUNK_TRIAGE_DESCRIPTION: "a<!-- hidden -->b",
       }),
-    ).toStrictEqual({ title: "Explicit", description: "ab" });
+    ).toStrictEqual({ context: { title: "Explicit", description: "ab" }, source: "env" });
   }));
 
 test("every source loses its HTML comments and is cut to the limits", () =>
@@ -90,22 +91,24 @@ test("every source loses its HTML comments and is cut to the limits", () =>
     const body = `<!-- left by the template -->\n${"b".repeat(2000)}`;
     git("commit", "--allow-empty", "-m", `${"s".repeat(300)}\n\n${body}`);
 
-    const commit = (await resolveContext(review(dir, "show HEAD"), dir, {}))!;
-    expect(commit.title).toBe("s".repeat(256));
-    expect(commit.description).toBe("b".repeat(1500));
+    const commit = await resolveContext(review(dir, "show HEAD"), dir, {});
+    expect(commit!.context).toStrictEqual({
+      title: "s".repeat(256),
+      description: "b".repeat(1500),
+    });
 
     const explicit = await resolveContext(review(dir, "show HEAD"), dir, {
       HUNK_TRIAGE_TITLE: "t".repeat(300),
       HUNK_TRIAGE_DESCRIPTION: "  padded  ",
     });
-    expect(explicit).toStrictEqual({ title: "t".repeat(256), description: "padded" });
+    expect(explicit!.context).toStrictEqual({ title: "t".repeat(256), description: "padded" });
   }));
 
 test("a comment that is never closed stays, and a flood of them costs no time", async () => {
   const describe = async (description: string) => {
     const env = { HUNK_TRIAGE_TITLE: "Explicit", HUNK_TRIAGE_DESCRIPTION: description };
 
-    return (await resolveContext(patch, tmpdir(), env))!.description;
+    return (await resolveContext(patch, tmpdir(), env))!.context.description;
   };
 
   expect(await describe("a<!-- one --><!-- two\n-->b<!-- open")).toBe("ab<!-- open");
@@ -118,7 +121,7 @@ test("a comment that is never closed stays, and a flood of them costs no time", 
 
 test("a limit that falls inside an emoji does not leave half of it behind", async () => {
   const env = { HUNK_TRIAGE_TITLE: `${"t".repeat(255)}\u{1F680}` };
-  const { title } = (await resolveContext(patch, tmpdir(), env))!;
+  const { title } = (await resolveContext(patch, tmpdir(), env))!.context;
 
   expect(title).toHaveLength(256);
   expect(title.isWellFormed()).toBe(true);

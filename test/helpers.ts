@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Cache } from "../src/cache.ts";
+import type { Run } from "../src/run.ts";
 import type { Changeset, DiffFile, Verdict } from "../src/types.ts";
+
+import { execute } from "../src/run.ts";
 
 export const verdict = (patch: Partial<Verdict> = {}): Verdict => ({
   role: "source",
@@ -45,6 +48,19 @@ export function memoryCache(): Cache & { entries: Map<string, Verdict> } {
     },
   };
 }
+
+/** What `gh pr view --json title,body,state` prints for a pull request. */
+export const pullRequest = (patch: { title?: string; body?: string; state?: string } = {}) =>
+  JSON.stringify({ title: "Fix the review order", body: "Why and how.", state: "OPEN", ...patch });
+
+/**
+ * A runner whose `gh` is the given stand-in, so that no test reaches GitHub. Everything else,
+ * which is Git in a test's own temporary repository, runs for real.
+ */
+export const runner =
+  (gh: Run): Run =>
+  (program, args, options) =>
+    program === "gh" ? gh(program, args, options) : execute(program, args, options);
 
 /** Runs `body` with a fresh temporary directory and removes it afterwards. */
 export async function withTempDir<T>(body: (dir: string) => T | Promise<T>): Promise<T> {

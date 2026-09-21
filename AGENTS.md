@@ -16,15 +16,15 @@ A [hunk](https://www.hunk.dev/) extension that orders changed files for review w
 
 ## Design rules
 
-- Fail open. A review must work as it would without the extension: a missing key, timeout, HTTP error, corrupt cache entry, unwritable path or Git failure degrades to "unclassified" or the original order. `triage()` never throws, and every wait is bounded by a deadline.
+- Fail open. A review must work as it would without the extension: a missing key, timeout, HTTP error, corrupt cache entry, unwritable path, Git failure or a `gh` that is missing, logged out or slow degrades to "unclassified" or the original order. `triage()` never throws, and every wait is bounded by a deadline.
 - Do not leak. The API key, raw patches and transport error details never reach notifications, debug output or the cache.
-- Treat `hunk.config` (a reviewed repository's `.hunk/config.toml` can set it), cache files and Jev responses as untrusted: validate and fall back, as `readConfig` and `isVerdict` do.
+- Treat `hunk.config` (a reviewed repository's `.hunk/config.toml` can set it), cache files, Jev responses and `gh` output (whoever opened a pull request wrote its title and description) as untrusted: validate and fall back, as `readConfig` and `isVerdict` do.
 - The question wording in `src/questions.ts` and the default model are an evaluated pair; don't reword or bump them in passing. Anything that changes what Jev is asked must also change the cache key (bump `QUESTIONS_VERSION` or add the input to `cacheKey`), or stale verdicts are served.
 - No runtime dependencies. hunk supplies `hunkdiff`, `react` and `@opentui/*` at runtime, and a second React copy breaks the pane, so they are devDependencies for types only. Everything else is Node built-ins.
 
 ## Testing
 
-- Tests use `bun:test` and inject `fetch`, `cache`, `env` and `run` (the runner of external commands such as Git) through the options of `triage()`, `queryFiles()` and `resolveContext()`; builders live in `test/helpers.ts`. Never call the real API, read the real environment or touch the real cache directory, and prefer this injection over module mocks.
+- Tests use `bun:test` and inject `fetch`, `cache`, `env` and `run` (the runner of external commands such as Git) through the options of `triage()`, `queryFiles()` and `resolveContext()`; builders live in `test/helpers.ts`. Never call the real API, run the real `gh`, read the real environment or touch the real cache directory, and prefer this injection over module mocks. `runner()` in the helpers swaps `gh` for a stand-in while Git runs for real in a test's temporary repository.
 - CI runs on Linux, macOS and Windows. Keep code and tests platform-neutral: `node:path` and `os.tmpdir()`, no hard-coded POSIX paths or shell commands.
 
 ## Releasing

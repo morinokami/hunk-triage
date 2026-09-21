@@ -3,6 +3,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
+import type { Run } from "../src/run.ts";
+
 import { diskCache } from "../src/cache.ts";
 import { readConfig } from "../src/config.ts";
 import { notification, triage } from "../src/triage.ts";
@@ -11,6 +13,7 @@ import {
   changeset,
   file,
   memoryCache,
+  pullRequest,
   requested,
   verdict,
   withTempDir,
@@ -101,6 +104,42 @@ test("reload reuses cache, reclassifies changed patches and invalidates on added
 
   await run(undefined, { HUNK_TRIAGE_TITLE: "different intent" });
   expect(calls).toBe(8);
+});
+
+test("an open pull request is what Jev is told about the branch's work", async () => {
+  // Stand-ins for both programs: Git names the branch, gh shows its pull request.
+  const run: Run = async (program) => (program === "gh" ? pullRequest() : "fix/review-order");
+  const input = { ...changeset(file("a")), title: `${basename(cwd)} main`, sourceLabel: cwd };
+  let told: unknown;
+
+  const result = await triage(input, cwd, config, {
+    env,
+    run,
+    cache: memoryCache(),
+    fetch: async (_, init) => {
+      told = requested(init).body.state.pull_request;
+      return answer([verdict()]);
+    },
+  });
+
+  expect(told).toStrictEqual({ title: "Fix the review order", description: "Why and how." });
+  expect(result.contextSource).toBe("pull-request");
+});
+
+test("a review with nothing to classify asks neither Git nor gh about its context", async () => {
+  let commands = 0;
+
+  const run: Run = async () => {
+    commands++;
+    return "fix/review-order";
+  };
+  const binary = file("logo.png", { isBinary: true });
+  const input = { ...changeset(binary), title: `${basename(cwd)} main`, sourceLabel: cwd };
+
+  const result = await triage(input, cwd, config, { env, run, cache: memoryCache() });
+
+  expect(result.state.mode).toBe("no-targets");
+  expect(commands).toBe(0);
 });
 
 test("cached verdicts still classify the review when Jev fails for the rest", async () => {

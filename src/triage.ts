@@ -52,17 +52,18 @@ export async function triage(
       return result;
     }
 
-    const resolving = performance.now();
-    const resolved = await resolveContext(changeset, cwd, env, { run: options.run });
-    result.context = resolved?.context ?? null;
-    result.contextSource = resolved?.source ?? null;
-    result.contextMs = Math.round(performance.now() - resolving);
-
     const targets = changeset.files.filter(eligible);
     if (!targets.length) {
       result.state = { mode: "no-targets", groups: new Map() };
       return result;
     }
+
+    // Only a review with something to classify is worth the wait for gh.
+    const resolving = performance.now();
+    const resolved = await resolveContext(changeset, cwd, env, { run: options.run });
+    result.context = resolved?.context ?? null;
+    result.contextSource = resolved?.source ?? null;
+    result.contextMs = Math.round(performance.now() - resolving);
 
     // Cached verdicts come first; only the files without one reach Jev.
     const cache = options.cache ?? defaultCache(env);

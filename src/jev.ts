@@ -3,7 +3,6 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import type { Context, DiffFile, Verdict } from "./types.ts";
 
-import { PATCH_LIMIT } from "./cache.ts";
 import { isRecord, isVerdict } from "./guards.ts";
 import { questions } from "./questions.ts";
 
@@ -11,11 +10,18 @@ export const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
 
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
+const PATCH_LIMIT = 16_000;
+
 // Up to this many files are asked about one at a time; beyond it they share a request.
 const SINGLE_FILE_LIMIT = 40;
 const BATCH_SIZE = 8;
 const MAX_CONCURRENCY = 12;
 const MAX_RETRIES = 3;
+
+/** The part of a patch that Jev sees, which is also the part a cached verdict depends on. */
+export function sentPatch(file: DiffFile): string {
+  return file.patch.slice(0, PATCH_LIMIT);
+}
 
 export function requestBody(
   model: string,
@@ -23,7 +29,7 @@ export function requestBody(
   allFiles: readonly DiffFile[],
   batch: readonly DiffFile[],
 ) {
-  const files = batch.map((file) => ({ path: file.path, patch: file.patch.slice(0, PATCH_LIMIT) }));
+  const files = batch.map((file) => ({ path: file.path, patch: sentPatch(file) }));
 
   const changedFiles = allFiles.map(
     (file) => `${file.path} (+${file.stats.additions} -${file.stats.deletions})`,

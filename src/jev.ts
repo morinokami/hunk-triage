@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import type { Context, DiffFile, Verdict } from "./types.ts";
 
+import { abortable } from "./abortable.ts";
 import { isRecord, isVerdict } from "./guards.ts";
 import { questions } from "./questions.ts";
 
@@ -78,23 +79,6 @@ export function parseAnswers(value: unknown, count: number): Verdict[] {
 
     return verdict;
   });
-}
-
-// Also bound a custom transport that does not implement AbortSignal correctly.
-async function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  signal.throwIfAborted();
-
-  let abort: () => void = () => {};
-  const cancelled = new Promise<never>((_, reject) => {
-    abort = () => reject(signal.reason);
-    signal.addEventListener("abort", abort, { once: true });
-  });
-
-  try {
-    return await Promise.race([operation, cancelled]);
-  } finally {
-    signal.removeEventListener("abort", abort);
-  }
 }
 
 /** Releases the connection of a response whose body is never read. */

@@ -1,12 +1,14 @@
-// Evaluated v2 wording from SPEC.md. Re-evaluate before changing.
-export const QUESTIONS_VERSION = "v2";
+// Evaluated v3 wording. Re-evaluate before changing.
+export const QUESTIONS_VERSION = "v3";
 
 export const ROLE_CRITERIA = {
-  source: "Application or library code that ships, including type definitions",
+  source:
+    "Application or library code that ships, including type definitions, runtime settings and data, and database migrations",
   test: "Automated tests or test helpers",
   fixture: "Test fixtures, snapshots or test data",
   docs: "Documentation, README, docs site pages, changelog or release notes",
-  config: "Build, CI, lint, tooling or package manifest configuration",
+  config:
+    "Build, CI, lint, tooling or package manifest configuration, not settings the application reads at runtime",
   generated: "Lockfiles, generated code or vendored third-party code",
   other: "None of the above",
 } as const;
@@ -32,9 +34,9 @@ export function questions(hasContext: boolean, ref = "file") {
       type: "noul",
       instructions: `Is the change in ${patch} mechanical, so that a reviewer can verify it at a glance without reasoning about new behavior?`,
       criteria: {
-        true: "Renames, moved code, import path updates, formatting, lint autofixes, typo or comment edits, version bumps, regenerated code, type annotations that do not change runtime behavior, or tests, fixtures and docs updated only to match a value or name changed elsewhere",
+        true: "Renames of local identifiers, equivalent moved code, import path updates, call sites updated only to follow a rename or signature change made elsewhere, formatting, lint autofixes, typo or comment edits, the package's own release version bump, regenerated code or lockfiles, redundant type annotations that preserve the public type contract, or tests, fixtures and docs updated only to match a value or name changed elsewhere",
         false:
-          "Adds or changes logic or behavior, adds new test cases or assertions, or adds or rewrites documentation content",
+          "Adds or changes logic, behavior, defaults or settings, upgrades a dependency, changes a public API or public type contract, adds new test cases or assertions or new test fixtures, or adds or rewrites documentation content",
       },
     },
 

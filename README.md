@@ -50,6 +50,7 @@ Disable all user extensions for one launch with `hunk diff --no-extensions`. Rem
 
 ## Behavior
 
+- Mechanical files are edits a reviewer can verify at a glance: renames, moved code, formatting, and call sites, tests or docs that only follow a change made elsewhere. Dependency updates and changes to settings, defaults or public types are not mechanical; they stay with their config or source group. Settings and data the application reads at runtime, and database migrations, count as source rather than config.
 - Binary files, oversized files, empty patches and failed classifications remain unclassified, at the end. If no files have a valid classification, the original order is retained with one status heading.
 - Existing diffs and annotations are preserved. No classification cards are added beside the diff.
 - The pane retains filtering, file selection, mouse navigation and `s` to toggle the files pane (subject to hunk's keybindings). hunk may hide the pane at narrower terminal widths; use `--sidebar` to show it explicitly.

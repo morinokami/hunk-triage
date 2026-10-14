@@ -13,14 +13,14 @@
     "fmt:check": "oxfmt --check"
   },
   "devDependencies": {
-    "@opentui/core": "0.5.6",
-    "@opentui/react": "0.5.6",
+    "@opentui/core": "0.6.0",
+    "@opentui/react": "0.6.0",
     "@types/bun": "1.4.2",
     "@types/node": "26.6.1",
     "@types/react": "19.3.0",
-    "hunkdiff": "0.22.0",
+    "hunkdiff": "0.23.0",
     "oxfmt": "0.68.0",
-    "react": "19.2.4",
+    "react": "19.3.0",
     "typescript": "7.0.2"
   },
   "hunk": {

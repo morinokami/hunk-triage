@@ -15,11 +15,11 @@
   "devDependencies": {
     "@opentui/core": "0.5.6",
     "@opentui/react": "0.5.6",
-    "@types/bun": "1.4.2",
-    "@types/node": "26.6.1",
+    "@types/bun": "1.4.3",
+    "@types/node": "26.6.5",
     "@types/react": "19.3.0",
     "hunkdiff": "0.22.0",
-    "oxfmt": "0.68.0",
+    "oxfmt": "0.73.0",
     "react": "19.2.4",
     "typescript": "7.0.2"
   },
